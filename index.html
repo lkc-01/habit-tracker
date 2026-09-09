@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>习惯打卡</title>
+  <meta name="description" content="简单好看的习惯打卡页面">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✅</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="blob blob-a" aria-hidden="true"></div>
+  <div class="blob blob-b" aria-hidden="true"></div>
+
+  <main class="app">
+    <header class="hero" id="hero">
+      <div class="hero-inner">
+        <div class="hero-head">
+          <div class="hero-info">
+            <p class="hero-date" id="dateText"></p>
+            <h1 class="hero-title" id="greetingText"></h1>
+          </div>
+          <div class="hero-count" aria-label="今日完成进度">
+            <span class="big" id="doneCount">0</span>
+            <span class="slash">/</span>
+            <span class="total" id="totalCount">0</span>
+          </div>
+        </div>
+        <p class="hero-sub" id="subText"></p>
+        <div class="track" id="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="bar" id="progressBar"></div>
+        </div>
+      </div>
+    </header>
+
+    <section class="panel week-panel" aria-label="最近 7 天打卡情况">
+      <div class="panel-title">最近 7 天</div>
+      <div class="week" id="weekStrip"></div>
+    </section>
+
+    <section class="panel" aria-label="今日习惯列表">
+      <div class="panel-title">
+        <span>今日习惯</span>
+        <span class="panel-hint" id="listHint"></span>
+      </div>
+      <ul class="habits" id="habitList"></ul>
+      <div class="empty" id="emptyState" hidden>
+        <div class="empty-emoji">🌱</div>
+        <p class="empty-main">还没有习惯</p>
+        <p class="empty-sub">在下方添加第一个想坚持的习惯吧</p>
+      </div>
+    </section>
+
+    <form class="add-form" id="addForm">
+      <input id="nameInput" type="text" maxlength="24"
+             placeholder="添加新习惯，如：喝水 🥤"
+             autocomplete="off" aria-label="新习惯名称">
+      <button type="submit" class="add-btn">＋ 添加</button>
+    </form>
+    <p class="tip">点一下圆圈完成打卡 · 点图标可换 emoji</p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
