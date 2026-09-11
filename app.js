@@ -10,7 +10,16 @@
     { name: '读书', emoji: '📖' },
   ];
 
-  const EMOJIS = ['🥤', '🏃', '📖', '💧', '💪', '🧘', '🥗', '✍️', '🎯', '🚶', '🛌', '🎸', '🖌️', '🧹', '☀️', '🌙'];
+  const EMOJIS = [
+    '🥤', '💧', '☕', '🍎', '🥗', '🍽️',
+    '🏃', '🚶', '🚴', '🏊', '💪', '🧘',
+    '🛌', '🧹', '🌱', '🌿', '☀️', '🌙',
+    '📖', '✍️', '📝', '💻', '🧠', '📚',
+    '🎯', '🧩', '🎸', '🎨', '🖌️', '📷',
+    '🎮', '🎧', '🎬', '⭐', '🔥', '💡',
+    '❤️', '😊', '😌', '💤', '✅', '⏰',
+    '🎉', '🏆', '🚀', '🧳', '🐾', '🌸',
+  ];
 
   const PALETTE = [
     { bg: '#dcfce7', fg: '#15803d' },
@@ -31,6 +40,10 @@
   let today = todayKey();
   let pendingDelete = null;
   let lastDoneCount = null;
+  let emojiPicker = null;
+  let emojiPickerAnchor = null;
+  let emojiPickerHabitId = null;
+  let emojiPickerCustomInput = null;
 
   /* ---------- 工具 ---------- */
   const $ = (sel) => document.querySelector(sel);
@@ -131,12 +144,173 @@
     if (changed) saveJSON(LOG_KEY, log);
   }
 
-  function cycleEmoji(id) {
-    const h = habits.find((x) => x.id === id);
-    if (!h) return;
-    const idx = EMOJIS.indexOf(h.emoji);
-    h.emoji = EMOJIS[(idx + 1 + EMOJIS.length) % EMOJIS.length];
+  function normalizeEmoji(raw) {
+    const input = String(raw || '').trim();
+    if (!input) return null;
+    let first;
+    try {
+      first = [...new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(input)][0]?.segment;
+    } catch (err) {
+      first = Array.from(input)[0];
+    }
+    if (!first) return null;
+    const isEmoji = /\p{Extended_Pictographic}/u.test(first)
+      || /^[\u{1F1E6}-\u{1F1FF}]{2}$/u.test(first)
+      || /^[0-9#*]\uFE0F?\u20E3$/.test(first);
+    return isEmoji ? first : null;
+  }
+
+  function closeEmojiPicker(restoreFocus = false) {
+    if (!emojiPicker || emojiPicker.hidden) return;
+    const anchor = emojiPickerAnchor;
+    emojiPicker.hidden = true;
+    emojiPicker.style.visibility = '';
+    if (anchor) {
+      anchor.classList.remove('active');
+      anchor.setAttribute('aria-expanded', 'false');
+    }
+    if (emojiPickerCustomInput) {
+      emojiPickerCustomInput.value = '';
+      emojiPickerCustomInput.classList.remove('invalid');
+    }
+    emojiPickerAnchor = null;
+    emojiPickerHabitId = null;
+    if (restoreFocus && anchor && anchor.isConnected) anchor.focus();
+  }
+
+  function positionEmojiPicker() {
+    if (!emojiPicker || emojiPicker.hidden) return;
+    if (!emojiPickerAnchor || !emojiPickerAnchor.isConnected) {
+      closeEmojiPicker();
+      return;
+    }
+
+    const margin = 10;
+    const gap = 8;
+    const anchorRect = emojiPickerAnchor.getBoundingClientRect();
+    emojiPicker.style.visibility = 'hidden';
+    emojiPicker.style.left = '0px';
+    emojiPicker.style.top = '0px';
+    const pickerRect = emojiPicker.getBoundingClientRect();
+
+    let left = Math.min(Math.max(margin, anchorRect.left), Math.max(margin, window.innerWidth - pickerRect.width - margin));
+    let top = anchorRect.bottom + gap;
+    if (top + pickerRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, anchorRect.top - pickerRect.height - gap);
+    }
+
+    emojiPicker.style.left = `${Math.round(left)}px`;
+    emojiPicker.style.top = `${Math.round(top)}px`;
+    emojiPicker.style.visibility = 'visible';
+  }
+
+  function applyEmoji(emoji) {
+    const h = habits.find((x) => x.id === emojiPickerHabitId);
+    if (!h) {
+      closeEmojiPicker();
+      return;
+    }
+    h.emoji = emoji;
     saveJSON(HABITS_KEY, habits);
+
+    const li = document.querySelector(`.habit[data-id="${CSS.escape(h.id)}"]`);
+    const icon = li && li.querySelector('.icon');
+    const current = icon && icon.querySelector('.emoji');
+    if (current) current.textContent = emoji;
+    if (icon) {
+      icon.classList.remove('bounce');
+      void icon.offsetWidth;
+      icon.classList.add('bounce');
+      icon.setAttribute('aria-label', `更换${h.name}的图标，当前为 ${emoji}`);
+    }
+    closeEmojiPicker();
+  }
+
+  function buildEmojiPicker() {
+    if (emojiPicker) return;
+
+    emojiPicker = el('div', 'emoji-picker');
+    emojiPicker.hidden = true;
+    emojiPicker.setAttribute('role', 'dialog');
+    emojiPicker.setAttribute('aria-label', '选择习惯图标');
+
+    const head = el('div', 'emoji-picker-head');
+    const title = el('div', 'emoji-picker-title', '选择图标');
+    const close = el('button', 'emoji-picker-close', '✕');
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭 emoji 列表');
+    close.addEventListener('click', () => closeEmojiPicker(true));
+    head.appendChild(title);
+    head.appendChild(close);
+
+    const grid = el('div', 'emoji-grid');
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', '常用 emoji');
+    EMOJIS.forEach((emoji) => {
+      const option = el('button', 'emoji-option', emoji);
+      option.type = 'button';
+      option.dataset.emoji = emoji;
+      option.title = `使用 ${emoji}`;
+      option.setAttribute('aria-label', `选择 ${emoji}`);
+      option.setAttribute('aria-pressed', 'false');
+      option.addEventListener('click', () => applyEmoji(emoji));
+      grid.appendChild(option);
+    });
+
+    const custom = el('div', 'emoji-custom');
+    emojiPickerCustomInput = el('input', 'emoji-custom-input');
+    emojiPickerCustomInput.type = 'text';
+    emojiPickerCustomInput.maxLength = 16;
+    emojiPickerCustomInput.placeholder = '自定义 emoji';
+    emojiPickerCustomInput.autocomplete = 'off';
+    emojiPickerCustomInput.setAttribute('aria-label', '输入自定义 emoji');
+    const customApply = el('button', 'emoji-custom-apply', '使用');
+    customApply.type = 'button';
+    const useCustomEmoji = () => {
+      const emoji = normalizeEmoji(emojiPickerCustomInput.value);
+      if (!emoji) {
+        emojiPickerCustomInput.classList.remove('invalid');
+        void emojiPickerCustomInput.offsetWidth;
+        emojiPickerCustomInput.classList.add('invalid');
+        emojiPickerCustomInput.focus();
+        return;
+      }
+      applyEmoji(emoji);
+    };
+    emojiPickerCustomInput.addEventListener('input', () => emojiPickerCustomInput.classList.remove('invalid'));
+    emojiPickerCustomInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        useCustomEmoji();
+      }
+    });
+    customApply.addEventListener('click', useCustomEmoji);
+    custom.appendChild(emojiPickerCustomInput);
+    custom.appendChild(customApply);
+
+    emojiPicker.appendChild(head);
+    emojiPicker.appendChild(grid);
+    emojiPicker.appendChild(custom);
+    document.body.appendChild(emojiPicker);
+  }
+
+  function openEmojiPicker(h, anchor) {
+    buildEmojiPicker();
+    closeEmojiPicker();
+    emojiPickerHabitId = h.id;
+    emojiPickerAnchor = anchor;
+    anchor.classList.add('active');
+    anchor.setAttribute('aria-expanded', 'true');
+
+    const current = h.emoji || '✅';
+    emojiPicker.querySelectorAll('.emoji-option').forEach((option) => {
+      const selected = option.dataset.emoji === current;
+      option.classList.toggle('selected', selected);
+      option.setAttribute('aria-pressed', String(selected));
+    });
+
+    emojiPicker.hidden = false;
+    positionEmojiPicker();
   }
 
   /* 从输入中拆出 emoji 图标与文字，例如「喝水 💧」或「💧 喝水」 */
@@ -265,18 +439,20 @@
 
     const icon = el('button', 'icon');
     icon.type = 'button';
-    icon.title = '点击更换图标';
+    icon.title = '点击选择 emoji';
     icon.style.background = pal.bg;
+    icon.setAttribute('aria-haspopup', 'dialog');
+    icon.setAttribute('aria-expanded', 'false');
+    icon.setAttribute('aria-label', `更换${h.name}的图标，当前为 ${h.emoji || '✅'}`);
     const emoji = el('span', 'emoji', h.emoji || '✅');
     icon.appendChild(emoji);
     icon.addEventListener('click', (e) => {
       e.stopPropagation();
-      cycleEmoji(h.id);
-      const cur = icon.querySelector('.emoji');
-      cur.textContent = h.emoji;
-      icon.classList.remove('bounce');
-      void icon.offsetWidth;
-      icon.classList.add('bounce');
+      if (emojiPicker && !emojiPicker.hidden && emojiPickerHabitId === h.id) {
+        closeEmojiPicker(true);
+      } else {
+        openEmojiPicker(h, icon);
+      }
     });
 
     li.appendChild(icon);
@@ -311,6 +487,7 @@
   }
 
   function renderList() {
+    closeEmojiPicker();
     const list = $('#habitList');
     list.textContent = '';
     const s = doneSet(today);
@@ -329,6 +506,7 @@
 
   /* ---------- 交互 ---------- */
   function toggleUI(id) {
+    closeEmojiPicker();
     if (!habits.some((h) => h.id === id)) return;
     toggleHabit(id);
     const li = document.querySelector(`.habit[data-id="${CSS.escape(id)}"]`);
@@ -359,6 +537,7 @@
 
   function handleDelete(e, id, btn) {
     e.stopPropagation();
+    closeEmojiPicker();
     if (pendingDelete && pendingDelete.id === id) {
       const toRemove = pendingDelete.id;
       cancelPendingDelete();
@@ -403,6 +582,29 @@
       }
       input.focus();
     });
+
+    // 点击选择器或图标以外的地方时关闭 emoji 列表
+    document.addEventListener('click', (e) => {
+      if (!emojiPicker || emojiPicker.hidden) return;
+      if (emojiPicker.contains(e.target)) return;
+      if (emojiPickerAnchor && emojiPickerAnchor.contains(e.target)) return;
+      closeEmojiPicker();
+    });
+
+    // 按 Esc 关闭 emoji 列表，并让焦点回到图标
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && emojiPicker && !emojiPicker.hidden) {
+        e.preventDefault();
+        closeEmojiPicker(true);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (emojiPicker && !emojiPicker.hidden) positionEmojiPicker();
+    });
+    window.addEventListener('scroll', () => {
+      if (emojiPicker && !emojiPicker.hidden) positionEmojiPicker();
+    }, true);
 
     // 点击其他地方取消「确认删除」状态
     document.addEventListener('click', (e) => {
